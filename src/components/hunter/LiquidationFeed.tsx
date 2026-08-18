@@ -96,7 +96,7 @@ export function LiquidationFeed({ liqs }: { liqs: Liquidation[] }) {
   );
 }
 
-function Stat({ k, v, tone }: { k: string; v: string; tone?: "good" | "bad" | "warn" }) {
+function Stat({ k, v, tone }: { k: string; v: string; tone?: "good" | "bad" | "warn" | undefined }) {
   return (
     <div className="flex justify-between gap-1 sm:block">
       <span className="label-xs">{k}</span>
