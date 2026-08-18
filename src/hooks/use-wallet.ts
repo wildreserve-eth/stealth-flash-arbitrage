@@ -146,7 +146,8 @@ export function useWallet(rpc: Record<ChainId, string>) {
         await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hex }] });
       } catch {
         const c = VIEM_CHAINS[chain];
-        await eth.request({
+        const req = eth.request as unknown as (a: { method: string; params?: unknown }) => Promise<unknown>;
+        await req({
           method: "wallet_addEthereumChain",
           params: [
             {
