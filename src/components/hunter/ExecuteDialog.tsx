@@ -84,7 +84,7 @@ export function ExecuteDialog({
     !overCap &&
     (!needsBorrower || isAddress(borrower));
 
-  const buildCall = () => {
+  const buildCall = (): { address: Address; abi: typeof EXECUTOR_ABI; functionName: string; args: readonly unknown[] } => {
     if (!chain || !asset || !target) throw new Error("no target");
     const amount = toUnits(notionalUsd, asset.decimals);
     const minProfit = toUnits(minProfitUsd, asset.decimals);
@@ -97,16 +97,16 @@ export function ExecuteDialog({
       return {
         address: executor as Address,
         abi: EXECUTOR_ABI,
-        functionName: "executeArb" as const,
-        args: [asset.address, amount, minProfit, params] as const,
+        functionName: "executeArb",
+        args: [asset.address, amount, minProfit, params],
       };
     }
     const l = target.liq;
     return {
       address: executor as Address,
       abi: EXECUTOR_ABI,
-      functionName: "backstepLiquidate" as const,
-      args: [asset.address, borrower as Address, amount, BigInt(l.steps), minProfit] as const,
+      functionName: "backstepLiquidate",
+      args: [asset.address, borrower as Address, amount, BigInt(l.steps), minProfit],
     };
   };
 
@@ -117,7 +117,7 @@ export function ExecuteDialog({
     try {
       const pc = wallet.publicClientFor(chain);
       const call = buildCall();
-      await pc.simulateContract({ ...call, account: wallet.address });
+      await pc.simulateContract({ ...call, account: wallet.address } as never);
       setPreflight({ ok: true, msg: "simulation passed — call would succeed at head" });
     } catch (e) {
       setPreflight({ ok: false, msg: (e as Error).message.split("\n")[0]!.slice(0, 220) });
@@ -138,7 +138,7 @@ export function ExecuteDialog({
         ...call,
         account: wallet.address,
         chain: VIEM_CHAINS[chain],
-      });
+      } as never);
       setHash(txHash);
       setBusy("mining");
       toast.success("Signed — broadcasting", { description: shortAddr(txHash) });
@@ -269,7 +269,7 @@ export function ExecuteDialog({
   );
 }
 
-function Row({ k, v, tone }: { k: string; v: string; tone?: "bad" }) {
+function Row({ k, v, tone }: { k: string; v: string; tone?: "bad" | undefined }) {
   return (
     <div className="flex items-baseline justify-between gap-2">
       <span className="label-xs">{k}</span>
