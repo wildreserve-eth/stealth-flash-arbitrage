@@ -112,6 +112,10 @@ export type HunterSettings = {
   hfTrigger: number;
   chains: Record<ChainId, boolean>;
   rpc: Record<ChainId, string>;
+  /** Operator-deployed executor contract per chain (live signing target). */
+  executor: Record<ChainId, string>;
+  /** Live mode enables real transaction signing from the feeds. */
+  liveMode: boolean;
 };
 
 export const DEFAULT_SETTINGS: HunterSettings = {
@@ -127,6 +131,8 @@ export const DEFAULT_SETTINGS: HunterSettings = {
     scroll: CHAINS[1]!.defaultRpc,
     polygon: CHAINS[2]!.defaultRpc,
   },
+  executor: { base: "", scroll: "", polygon: "" },
+  liveMode: false,
 };
 
 const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]!;
