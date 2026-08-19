@@ -1,4 +1,9 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { Toaster } from "@/components/ui/sonner";
+import { useWallet } from "@/hooks/use-wallet";
+import { WalletBar } from "@/components/hunter/WalletBar";
+import { ExecuteDialog, type ExecTarget } from "@/components/hunter/ExecuteDialog";
 import { useHunter } from "@/hooks/use-hunter";
 import { ChainWatcher } from "@/components/hunter/ChainWatcher";
 import { ControlDeck } from "@/components/hunter/ControlDeck";
@@ -31,6 +36,8 @@ export const Route = createFileRoute("/")({
 
 function Console() {
   const { settings, update, running, setRunning, opps, liqs, stats, realized, reset } = useHunter();
+  const wallet = useWallet(settings.rpc);
+  const [target, setTarget] = useState<ExecTarget | null>(null);
 
   const toggleChain = (id: ChainId) =>
     update({ chains: { ...settings.chains, [id]: !settings.chains[id] } });
@@ -76,6 +83,8 @@ function Console() {
         </div>
       </header>
 
+      <WalletBar wallet={wallet} />
+
       <section className="mb-4">
         <ChainWatcher
           stats={stats}
@@ -88,17 +97,30 @@ function Console() {
       <div className="grid gap-4 lg:grid-cols-[340px_1fr_1fr]">
         <ControlDeck settings={settings} update={update} />
         <div className="h-[520px] lg:h-[640px]">
-          <ArbFeed opps={opps} />
+          <ArbFeed opps={opps} onExecute={(o) => setTarget({ kind: "arb", opp: o })} />
         </div>
         <div className="h-[520px] lg:h-[640px]">
-          <LiquidationFeed liqs={liqs} />
+          <LiquidationFeed
+            liqs={liqs}
+            onExecute={(l) => setTarget({ kind: "liq", liq: l })}
+          />
         </div>
       </div>
 
       <p className="mt-4 font-mono text-[10px] leading-relaxed text-muted-foreground">
-        Simulation console. Opportunity, gas and liquidation figures are modeled locally — no signer,
-        no broadcast, no funds at risk. Wire an executor before treating any row as actionable.
+        Opportunity, gas and liquidation figures are modeled locally. Wallet balance, gas price and
+        transaction signing are live — "execute" broadcasts a real transaction from your MetaMask to
+        your executor contract. Always run preflight first.
       </p>
+
+      <ExecuteDialog
+        target={target}
+        onClose={() => setTarget(null)}
+        wallet={wallet}
+        settings={settings}
+        update={update}
+      />
+      <Toaster />
     </main>
   );
 }

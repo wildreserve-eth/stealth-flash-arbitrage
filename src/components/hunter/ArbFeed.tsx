@@ -16,7 +16,13 @@ const statusTone: Record<Opportunity["status"], string> = {
   missed: "text-danger border-danger/40",
 };
 
-export function ArbFeed({ opps }: { opps: Opportunity[] }) {
+export function ArbFeed({
+  opps,
+  onExecute,
+}: {
+  opps: Opportunity[];
+  onExecute?: (o: Opportunity) => void;
+}) {
   return (
     <div className="panel flex min-h-0 flex-col">
       <header className="flex items-center justify-between border-b border-border px-3 py-2">
@@ -83,6 +89,15 @@ export function ArbFeed({ opps }: { opps: Opportunity[] }) {
                 <span className="label-xs">
                   conf {o.confidence.toFixed(0)}% · {o.blocksLeft}b left
                 </span>
+                {onExecute && (
+                  <button
+                    type="button"
+                    onClick={() => onExecute(o)}
+                    className="rounded-sm border border-signal/50 bg-signal/10 px-2 py-0.5 font-mono text-[10px] uppercase text-signal hover:bg-signal/20"
+                  >
+                    execute
+                  </button>
+                )}
               </div>
             </li>
           ))}
