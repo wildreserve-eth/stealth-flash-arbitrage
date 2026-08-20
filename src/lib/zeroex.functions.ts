@@ -10,7 +10,7 @@ export type RouteQuote = {
   rate?: number;
   /** Guaranteed slippage between quoted and minimum output, in %. */
   slippagePct?: number;
-  networkFeeWei?: string;
+  networkFeeWei?: string | undefined;
   sources?: string[];
 };
 
