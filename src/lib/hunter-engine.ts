@@ -38,7 +38,7 @@ export const CHAINS: Chain[] = [
     id: "polygon",
     name: "Polygon",
     short: "POLY",
-    defaultRpc: "https://polygon-rpc.com",
+    defaultRpc: "https://api-polygon-mainnet-full.n.dwellir.com/9c0b9cab-d512-4896-9bea-192cc2805b46",
     blockTimeMs: 2100,
     gasUnit: "gwei",
   },
