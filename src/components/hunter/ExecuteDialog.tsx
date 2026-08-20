@@ -15,6 +15,7 @@ import {
   EXECUTOR_ABI,
   EXPLORER,
   LOAN_ASSET,
+  QUOTE_ASSET,
   VIEM_CHAINS,
   isAddress,
   shortAddr,
@@ -23,6 +24,7 @@ import {
 import { usd, type ChainId, type HunterSettings, type Liquidation, type Opportunity } from "@/lib/hunter-engine";
 import type { useWallet } from "@/hooks/use-wallet";
 import { cn } from "@/lib/utils";
+import { getRouteQuote, type RouteQuote } from "@/lib/zeroex.functions";
 
 export type ExecTarget = { kind: "arb"; opp: Opportunity } | { kind: "liq"; liq: Liquidation };
 
@@ -61,6 +63,8 @@ export function ExecuteDialog({
 
   const executor = chain ? (settings.executor[chain] ?? "") : "";
   const asset = chain ? LOAN_ASSET[chain] : null;
+  const quoteAsset = chain ? QUOTE_ASSET[chain] : null;
+  const recipient = (settings.profitRecipient || wallet.address || "") as string;
 
   const notionalUsd = target
     ? target.kind === "arb"
@@ -82,6 +86,7 @@ export function ExecuteDialog({
     !!wallet.address &&
     isAddress(executor) &&
     !overCap &&
+    isAddress(recipient) &&
     (!needsBorrower || isAddress(borrower));
 
   const buildCall = (): { address: Address; abi: typeof EXECUTOR_ABI; functionName: string; args: readonly unknown[] } => {
@@ -91,8 +96,10 @@ export function ExecuteDialog({
     if (target.kind === "arb") {
       const o = target.opp;
       const params = encodeAbiParameters(
-        parseAbiParameters("string buyVenue, string sellVenue, string pair, uint256 slippageBps"),
-        [o.legs[0].venue, o.legs[1].venue, o.pair, BigInt(slippageBps)],
+        parseAbiParameters(
+          "string buyVenue, string sellVenue, string pair, uint256 slippageBps, address profitTo",
+        ),
+        [o.legs[0].venue, o.legs[1].venue, o.pair, BigInt(slippageBps), recipient as Address],
       );
       return {
         address: executor as Address,
@@ -153,6 +160,86 @@ export function ExecuteDialog({
       toast.error("Execution aborted", { description: (e as Error).message.split("\n")[0]!.slice(0, 140) });
     } finally {
       setBusy("idle");
+    }
+  };
+
+  const [quotes, setQuotes] = useState<{ buy: RouteQuote; sell: RouteQuote } | null>(null);
+  const [quoting, setQuoting] = useState(false);
+
+  useEffect(() => {
+    setQuotes(null);
+  }, [target]);
+
+  const fetchQuotes = async () => {
+    if (!chain || !asset || !quoteAsset || notionalUsd <= 0) return;
+    setQuoting(true);
+    setQuotes(null);
+    try {
+      const sellAmount = toUnits(notionalUsd, asset.decimals).toString();
+      const buyLeg = await getRouteQuote({
+        data: {
+          chainId: CHAIN_IDS[chain],
+          sellToken: asset.address,
+          buyToken: quoteAsset.address,
+          sellAmount,
+          sellDecimals: asset.decimals,
+          buyDecimals: quoteAsset.decimals,
+          slippageBps,
+          ...(wallet.address ? { taker: wallet.address } : {}),
+        },
+      });
+      const back = buyLeg.ok ? (buyLeg.buyAmount ?? "0") : "0";
+      const sellLeg =
+        back !== "0"
+          ? await getRouteQuote({
+              data: {
+                chainId: CHAIN_IDS[chain],
+                sellToken: quoteAsset.address,
+                buyToken: asset.address,
+                sellAmount: back,
+                sellDecimals: quoteAsset.decimals,
+                buyDecimals: asset.decimals,
+                slippageBps,
+                ...(wallet.address ? { taker: wallet.address } : {}),
+              },
+            })
+          : { ok: false, error: "skipped — first leg failed" };
+      setQuotes({ buy: buyLeg, sell: sellLeg });
+    } catch (e) {
+      toast.error("0x quote failed", { description: (e as Error).message.slice(0, 140) });
+    } finally {
+      setQuoting(false);
+    }
+  };
+
+  const roundTripUsd = (() => {
+    if (!quotes?.sell.ok || !asset) return null;
+    return Number(quotes.sell.buyAmount ?? 0) / 10 ** asset.decimals;
+  })();
+
+  const sendProfitCall = async (fn: "setProfitRecipient" | "sweep") => {
+    if (!chain || !wallet.address || !asset || !isAddress(executor) || !isAddress(recipient)) return;
+    try {
+      if (wallet.chainIdNum !== CHAIN_IDS[chain]) await wallet.switchTo(chain);
+      const wc = wallet.walletClient();
+      if (!wc) throw new Error("wallet unavailable");
+      const txHash = await wc.writeContract({
+        address: executor as Address,
+        abi: EXECUTOR_ABI,
+        functionName: fn,
+        args: fn === "sweep" ? [asset.address, recipient as Address] : [recipient as Address],
+        account: wallet.address,
+        chain: VIEM_CHAINS[chain],
+      } as never);
+      toast.success(fn === "sweep" ? "Sweeping profits to wallet" : "Profit recipient updated", {
+        description: shortAddr(txHash),
+      });
+      await wallet.publicClientFor(chain).waitForTransactionReceipt({ hash: txHash });
+      toast.success("Confirmed on-chain");
+    } catch (e) {
+      toast.error("Profit routing failed", {
+        description: (e as Error).message.split("\n")[0]!.slice(0, 140),
+      });
     }
   };
 
@@ -219,6 +306,79 @@ export function ExecuteDialog({
             />
           </label>
 
+          <label className="block">
+            <span className="label-xs">profit recipient (gas top-up wallet)</span>
+            <Input
+              value={settings.profitRecipient}
+              spellCheck={false}
+              placeholder={wallet.address ?? "0x… (defaults to connected wallet)"}
+              onChange={(e) => update({ profitRecipient: e.target.value })}
+              className="mt-1 h-8 border-border bg-background font-mono text-[11px]"
+            />
+            <span className="mt-1 block text-[10px] text-muted-foreground">
+              profits route to {isAddress(recipient) ? shortAddr(recipient) : "— connect a wallet"}
+            </span>
+          </label>
+
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1 font-mono text-[10px] uppercase"
+              disabled={!isAddress(recipient) || !isAddress(executor)}
+              onClick={() => sendProfitCall("setProfitRecipient")}
+            >
+              set recipient
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1 font-mono text-[10px] uppercase"
+              disabled={!isAddress(recipient) || !isAddress(executor)}
+              onClick={() => sendProfitCall("sweep")}
+            >
+              sweep → wallet
+            </Button>
+          </div>
+
+          {target?.kind === "arb" && (
+            <div className="rounded-sm border border-border p-2">
+              <div className="flex items-center justify-between">
+                <span className="label-xs">0x swap route</span>
+                <button
+                  type="button"
+                  onClick={fetchQuotes}
+                  disabled={quoting}
+                  className="rounded-sm border border-signal/50 bg-signal/10 px-2 py-0.5 text-[10px] uppercase text-signal hover:bg-signal/20 disabled:opacity-50"
+                >
+                  {quoting ? "quoting…" : "fetch quotes"}
+                </button>
+              </div>
+
+              {quotes && (
+                <div className="mt-2 space-y-1">
+                  <Leg
+                    label={`${asset?.symbol} → ${quoteAsset?.symbol}`}
+                    q={quotes.buy}
+                    decimals={quoteAsset?.decimals ?? 18}
+                  />
+                  <Leg
+                    label={`${quoteAsset?.symbol} → ${asset?.symbol}`}
+                    q={quotes.sell}
+                    decimals={asset?.decimals ?? 6}
+                  />
+                  {roundTripUsd !== null && (
+                    <Row
+                      k="round-trip out"
+                      v={`${usd(roundTripUsd)} (${roundTripUsd - notionalUsd >= 0 ? "+" : ""}${usd(
+                        roundTripUsd - notionalUsd,
+                      )})`}
+                      tone={roundTripUsd < notionalUsd ? "bad" : undefined}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {overCap && (
             <p className="text-danger">notional exceeds the {settings.capPct}% flashloan cap — blocked.</p>
           )}
@@ -266,6 +426,31 @@ export function ExecuteDialog({
         </p>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function Leg({ label, q, decimals }: { label: string; q: RouteQuote; decimals: number }) {
+  if (!q.ok) {
+    return (
+      <p className="break-all text-[10px] text-danger">
+        {label}: {q.error ?? "no route"}
+      </p>
+    );
+  }
+  const out = Number(q.buyAmount ?? 0) / 10 ** decimals;
+  return (
+    <div className="text-[10px]">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="label-xs">{label}</span>
+        <span className="tabular-nums text-foreground">
+          {out.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+        </span>
+      </div>
+      <div className="flex items-baseline justify-between gap-2 text-muted-foreground">
+        <span>slippage {(q.slippagePct ?? 0).toFixed(2)}%</span>
+        <span className="truncate">{(q.sources ?? []).join(" · ") || "—"}</span>
+      </div>
+    </div>
   );
 }
 

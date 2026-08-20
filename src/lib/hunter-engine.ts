@@ -116,6 +116,8 @@ export type HunterSettings = {
   executor: Record<ChainId, string>;
   /** Live mode enables real transaction signing from the feeds. */
   liveMode: boolean;
+  /** Where executor profits are pushed; empty = connected signing wallet. */
+  profitRecipient: string;
 };
 
 export const DEFAULT_SETTINGS: HunterSettings = {
@@ -133,6 +135,7 @@ export const DEFAULT_SETTINGS: HunterSettings = {
   },
   executor: { base: "", scroll: "", polygon: "" },
   liveMode: false,
+  profitRecipient: "",
 };
 
 const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]!;
