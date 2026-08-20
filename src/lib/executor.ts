@@ -36,6 +36,13 @@ export const LOAN_ASSET: Record<ChainId, { address: `0x${string}`; symbol: strin
   polygon: { address: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", symbol: "USDC", decimals: 6 },
 };
 
+/** Canonical WETH per chain — quote asset for longtail pairs. */
+export const QUOTE_ASSET: Record<ChainId, { address: `0x${string}`; symbol: string; decimals: number }> = {
+  base: { address: "0x4200000000000000000000000000000000000006", symbol: "WETH", decimals: 18 },
+  scroll: { address: "0x5300000000000000000000000000000000000004", symbol: "WETH", decimals: 18 },
+  polygon: { address: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", symbol: "WETH", decimals: 18 },
+};
+
 /**
  * Minimal executor interface the operator's contract must expose.
  * Both entrypoints are expected to be onlyOwner and to revert on net loss.
@@ -65,6 +72,33 @@ export const EXECUTOR_ABI = [
       { name: "minProfit", type: "uint256" },
     ],
     outputs: [{ name: "recovered", type: "uint256" }],
+  },
+  {
+    // Profits are pushed here on every successful hunt, so the signing
+    // wallet is topped up for the next round of gas.
+    type: "function",
+    name: "setProfitRecipient",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "recipient", type: "address" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "profitRecipient",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    // Manual drain of any residual profit sitting in the executor.
+    type: "function",
+    name: "sweep",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "to", type: "address" },
+    ],
+    outputs: [{ name: "amount", type: "uint256" }],
   },
 ] as const;
 
