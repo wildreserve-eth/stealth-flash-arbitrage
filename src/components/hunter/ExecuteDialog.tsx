@@ -166,6 +166,10 @@ export function ExecuteDialog({
   const [quotes, setQuotes] = useState<{ buy: RouteQuote; sell: RouteQuote } | null>(null);
   const [quoting, setQuoting] = useState(false);
 
+  useEffect(() => {
+    setQuotes(null);
+  }, [target]);
+
   const fetchQuotes = async () => {
     if (!chain || !asset || !quoteAsset || notionalUsd <= 0) return;
     setQuoting(true);
