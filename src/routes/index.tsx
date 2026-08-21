@@ -6,6 +6,7 @@ import { WalletBar } from "@/components/hunter/WalletBar";
 import { ExecuteDialog, type ExecTarget } from "@/components/hunter/ExecuteDialog";
 import { useHunter } from "@/hooks/use-hunter";
 import { ChainWatcher } from "@/components/hunter/ChainWatcher";
+import { RpcDiagnostics } from "@/components/hunter/RpcDiagnostics";
 import { ControlDeck } from "@/components/hunter/ControlDeck";
 import { ArbFeed } from "@/components/hunter/ArbFeed";
 import { LiquidationFeed } from "@/components/hunter/LiquidationFeed";
@@ -93,6 +94,8 @@ function Console() {
           onToggle={toggleChain}
         />
       </section>
+
+      <RpcDiagnostics rpc={settings.rpc} enabled={settings.chains} />
 
       <div className="grid gap-4 lg:grid-cols-[340px_1fr_1fr]">
         <ControlDeck settings={settings} update={update} />

@@ -5,13 +5,13 @@ import {
   custom,
   formatEther,
   formatGwei,
-  http,
   type Address,
   type EIP1193Provider,
   type PublicClient,
   type WalletClient,
 } from "viem";
 import { CHAIN_IDS, VIEM_CHAINS, chainIdToKey } from "@/lib/executor";
+import { trackedHttp } from "@/lib/rpc-health";
 import type { ChainId } from "@/lib/hunter-engine";
 
 declare global {
@@ -75,7 +75,7 @@ export function useWallet(rpc: Record<ChainId, string>) {
     (chain: ChainId): PublicClient =>
       createPublicClient({
         chain: VIEM_CHAINS[chain],
-        transport: http(rpc[chain] || undefined),
+        transport: trackedHttp(chain, rpc[chain]),
       }) as PublicClient,
     [rpc],
   );
