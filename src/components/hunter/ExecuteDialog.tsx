@@ -54,10 +54,18 @@ export function ExecuteDialog({
   const [busy, setBusy] = useState<"idle" | "preflight" | "signing" | "mining">("idle");
   const [preflight, setPreflight] = useState<{ ok: boolean; msg: string } | null>(null);
   const [hash, setHash] = useState<`0x${string}` | null>(null);
+  const [gasPlan, setGasPlan] = useState<{
+    gas: bigint;
+    maxFeeGwei: number;
+    tipGwei: number;
+    nonce: number;
+    chainId: number;
+  } | null>(null);
 
   useEffect(() => {
     setPreflight(null);
     setHash(null);
+    setGasPlan(null);
     setBusy("idle");
   }, [target]);
 
@@ -136,15 +144,65 @@ export function ExecuteDialog({
   const send = async () => {
     if (!chain || !wallet.address) return;
     try {
-      if (wallet.chainIdNum !== CHAIN_IDS[chain]) await wallet.switchTo(chain);
+      // 1. chainId: force the wallet onto the exact target chain and verify the
+      //    provider actually reports it before anything is signed.
+      const targetId = CHAIN_IDS[chain];
+      if (wallet.chainIdNum !== targetId) await wallet.switchTo(chain);
+      const live = Number(
+        (await window.ethereum!.request({ method: "eth_chainId" })) as string,
+      );
+      if (live !== targetId) {
+        throw new Error(`wrong network: wallet on ${live}, executor expects ${targetId}`);
+      }
+
       const wc = wallet.walletClient();
       if (!wc) throw new Error("wallet unavailable");
       setBusy("signing");
       const call = buildCall();
+      const pcPre = wallet.publicClientFor(chain);
+
+      // 2. gas: estimate against head and add headroom, then price with
+      //    EIP-1559 fields (Polygon requires a non-trivial priority fee).
+      const gasEstimate = await pcPre.estimateContractGas({
+        ...call,
+        account: wallet.address,
+      } as never);
+      const gas = (gasEstimate * 125n) / 100n;
+
+      const fees = await pcPre.estimateFeesPerGas();
+      const maxPriorityFeePerGas =
+        fees.maxPriorityFeePerGas && fees.maxPriorityFeePerGas > 0n
+          ? (fees.maxPriorityFeePerGas * 125n) / 100n
+          : 30_000_000_000n; // 30 gwei floor — Polygon drops lower tips
+      const maxFeePerGas =
+        fees.maxFeePerGas && fees.maxFeePerGas > maxPriorityFeePerGas
+          ? (fees.maxFeePerGas * 125n) / 100n
+          : maxPriorityFeePerGas * 2n;
+
+      // 3. nonce: pin from the pending pool so back-to-back hunts from the same
+      //    signer queue instead of colliding on a stale wallet-cached nonce.
+      const nonce = await pcPre.getTransactionCount({
+        address: wallet.address,
+        blockTag: "pending",
+      });
+
+      setGasPlan({
+        gas,
+        maxFeeGwei: Number(maxFeePerGas) / 1e9,
+        tipGwei: Number(maxPriorityFeePerGas) / 1e9,
+        nonce,
+        chainId: targetId,
+      });
+
       const txHash = await wc.writeContract({
         ...call,
         account: wallet.address,
         chain: VIEM_CHAINS[chain],
+        chainId: targetId,
+        gas,
+        maxFeePerGas,
+        maxPriorityFeePerGas,
+        nonce,
       } as never);
       setHash(txHash);
       setBusy("mining");
@@ -264,6 +322,17 @@ export function ExecuteDialog({
           <Row k={`cap ${settings.capPct}%`} v={usd(capUsd)} />
           <Row k="loan asset" v={asset ? `${asset.symbol} ${shortAddr(asset.address)}` : "—"} />
           <Row k="min profit guard" v={usd(minProfitUsd)} />
+          <Row k="chain id" v={chain ? String(CHAIN_IDS[chain]) : "—"} />
+          {gasPlan && (
+            <>
+              <Row k="gas limit" v={gasPlan.gas.toString()} />
+              <Row
+                k="max fee / tip"
+                v={`${gasPlan.maxFeeGwei.toFixed(1)} / ${gasPlan.tipGwei.toFixed(1)} gwei`}
+              />
+              <Row k="nonce" v={String(gasPlan.nonce)} />
+            </>
+          )}
           <Row
             k="signer"
             v={wallet.address ? shortAddr(wallet.address) : "not connected"}
