@@ -157,7 +157,7 @@ function Spark({ samples }: { samples: { ms: number; ok: boolean }[] }) {
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone?: "bad" }) {
+function Stat({ label, value, tone }: { label: string; value: string; tone?: "bad" | undefined }) {
   return (
     <div>
       <div className="label-xs">{label}</div>
