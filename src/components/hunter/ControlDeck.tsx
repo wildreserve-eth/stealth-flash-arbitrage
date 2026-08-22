@@ -104,6 +104,75 @@ export function ControlDeck({
             stored locally in this browser · never transmitted
           </p>
         </div>
+
+        <label className="flex items-center justify-between rounded-sm border border-border bg-surface-raised px-3 py-2">
+          <span>
+            <span className="block text-xs">Stealth mode</span>
+            <span className="label-xs">private mempool relay + rotated payouts</span>
+          </span>
+          <Switch
+            checked={settings.stealthMode}
+            onCheckedChange={(v) => update({ stealthMode: v })}
+            aria-label="Stealth mode"
+          />
+        </label>
+
+        {settings.stealthMode && (
+          <div className="space-y-3 rounded-sm border border-signal/30 bg-signal/5 p-3">
+            <div>
+              <div className="label-xs mb-2">private relay RPC per chain</div>
+              <div className="space-y-2">
+                {CHAINS.map((c) => (
+                  <div key={c.id} className="flex items-center gap-2">
+                    <span className="w-14 shrink-0 font-mono text-[10px] text-muted-foreground uppercase">
+                      {c.short}
+                    </span>
+                    <Input
+                      value={settings.stealthRelays[c.id]}
+                      spellCheck={false}
+                      onChange={(e) =>
+                        update({
+                          stealthRelays: { ...settings.stealthRelays, [c.id as ChainId]: e.target.value },
+                        })
+                      }
+                      className="h-8 border-border bg-background font-mono text-[11px]"
+                      placeholder="https://… (empty = public mempool)"
+                    />
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
+                on sign &amp; send, the wallet's network RPC is swapped to the relay so the tx
+                bypasses the public mempool. chains without a relay fall back to public
+                broadcast.
+              </p>
+            </div>
+
+            <div>
+              <div className="label-xs mb-2">stealth payout pool (one address per line)</div>
+              <textarea
+                value={settings.stealthRecipients.join("\n")}
+                spellCheck={false}
+                rows={3}
+                onChange={(e) =>
+                  update({
+                    stealthRecipients: e.target.value
+                      .split("\n")
+                      .map((s) => s.trim())
+                      .filter(Boolean),
+                  })
+                }
+                className="w-full rounded-sm border border-border bg-background px-2 py-1.5 font-mono text-[11px] placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                placeholder={"0x…\n0x…"}
+              />
+              <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
+                {settings.stealthRecipients.length > 0
+                  ? `${settings.stealthRecipients.length} address${settings.stealthRecipients.length === 1 ? "" : "es"} — profits rotate to a random one per hunt`
+                  : "empty pool — profits go to the default recipient. use only addresses you control."}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
