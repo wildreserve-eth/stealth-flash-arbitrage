@@ -72,7 +72,32 @@ export function ExecuteDialog({
   const executor = chain ? (settings.executor[chain] ?? "") : "";
   const asset = chain ? LOAN_ASSET[chain] : null;
   const quoteAsset = chain ? QUOTE_ASSET[chain] : null;
-  const recipient = (settings.profitRecipient || wallet.address || "") as string;
+
+  // Stealth: rotate the profit recipient across the operator's payout pool so
+  // earnings can't be traced to a single address. Re-picked per target.
+  const pool = useMemo(
+    () => (settings.stealthRecipients ?? []).filter(isAddress),
+    [settings.stealthRecipients],
+  );
+  const [stealthPick, setStealthPick] = useState("");
+  useEffect(() => {
+    setStealthPick(pool.length ? pool[Math.floor(Math.random() * pool.length)]! : "");
+  }, [target, pool]);
+
+  const stealthRotate = settings.stealthMode && pool.length > 0;
+  const recipient = (
+    stealthRotate && stealthPick ? stealthPick : settings.profitRecipient || wallet.address || ""
+  ) as string;
+
+  const relay = chain && settings.stealthMode ? (settings.stealthRelays?.[chain] ?? "").trim() : "";
+  const relayHost = useMemo(() => {
+    if (!relay) return "";
+    try {
+      return new URL(relay).host;
+    } catch {
+      return relay;
+    }
+  }, [relay]);
 
   const notionalUsd = target
     ? target.kind === "arb"
@@ -143,7 +168,15 @@ export function ExecuteDialog({
 
   const send = async () => {
     if (!chain || !wallet.address) return;
+    // Stealth: swap the wallet's network RPC onto the private relay before
+    // anything is signed; restored in `finally` no matter the outcome.
+    let relayArmed = false;
     try {
+      if (relay) {
+        await wallet.setChainRpc(chain, relay, true);
+        relayArmed = true;
+        toast.info("Stealth relay armed", { description: relayHost || relay });
+      }
       // 1. chainId: force the wallet onto the exact target chain and verify the
       //    provider actually reports it before anything is signed.
       const targetId = CHAIN_IDS[chain];
@@ -217,6 +250,16 @@ export function ExecuteDialog({
     } catch (e) {
       toast.error("Execution aborted", { description: (e as Error).message.split("\n")[0]!.slice(0, 140) });
     } finally {
+      if (relayArmed) {
+        try {
+          await wallet.setChainRpc(chain, settings.rpc[chain], false);
+          toast.info("Public RPC restored", { description: "stealth relay disarmed" });
+        } catch {
+          toast.warning("Relay still active in wallet", {
+            description: "restore the public RPC in your wallet's network settings",
+          });
+        }
+      }
       setBusy("idle");
     }
   };
@@ -338,6 +381,18 @@ export function ExecuteDialog({
             v={wallet.address ? shortAddr(wallet.address) : "not connected"}
             tone={wallet.address ? undefined : "bad"}
           />
+          {settings.stealthMode && (
+            <>
+              <Row
+                k="broadcast"
+                v={relay ? `private relay · ${relayHost || "custom"}` : "public mempool — no relay set"}
+                tone={relay ? undefined : "bad"}
+              />
+              {stealthRotate && (
+                <Row k="stealth payout" v={`${shortAddr(stealthPick)} · 1 of ${pool.length} rotated`} />
+              )}
+            </>
+          )}
 
           <label className="block">
             <span className="label-xs">executor contract ({chain})</span>
