@@ -118,6 +118,17 @@ export type HunterSettings = {
   liveMode: boolean;
   /** Where executor profits are pushed; empty = connected signing wallet. */
   profitRecipient: string;
+  /**
+   * Stealth mode: signed hunts are broadcast through a private relay RPC
+   * (wallet network RPC is swapped to the relay for the send) so the tx
+   * never touches the public mempool, and profit payouts rotate across the
+   * stealth recipient pool so earnings can't be traced to one address.
+   */
+  stealthMode: boolean;
+  /** Private relay endpoint per chain; empty = fall back to public mempool. */
+  stealthRelays: Record<ChainId, string>;
+  /** Operator-owned payout addresses; one is picked at random per hunt. */
+  stealthRecipients: string[];
 };
 
 export const DEFAULT_SETTINGS: HunterSettings = {
@@ -136,6 +147,9 @@ export const DEFAULT_SETTINGS: HunterSettings = {
   executor: { base: "", scroll: "", polygon: "" },
   liveMode: false,
   profitRecipient: "",
+  stealthMode: false,
+  stealthRelays: { base: "", scroll: "", polygon: "" },
+  stealthRecipients: [],
 };
 
 const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]!;
