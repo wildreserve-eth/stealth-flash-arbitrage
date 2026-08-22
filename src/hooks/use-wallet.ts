@@ -165,5 +165,35 @@ export function useWallet(rpc: Record<ChainId, string>) {
     [rpc, readAccount],
   );
 
-  return { ...state, connect, disconnect, switchTo, publicClientFor, walletClient };
+  /**
+   * Point the wallet's network entry for `chain` at a different RPC URL —
+   * used to swap onto a private relay before signing (stealth broadcast) and
+   * to restore the public endpoint afterwards. Wallets update an existing
+   * custom network in place when the chainId matches; some wallets refuse to
+   * mutate built-in networks, in which case the caller surfaces the error.
+   */
+  const setChainRpc = useCallback(
+    async (chain: ChainId, rpcUrl: string, stealth: boolean) => {
+      const eth = window.ethereum;
+      if (!eth) throw new Error("no injected wallet");
+      const c = VIEM_CHAINS[chain];
+      const req = eth.request as unknown as (a: { method: string; params?: unknown }) => Promise<unknown>;
+      await req({
+        method: "wallet_addEthereumChain",
+        params: [
+          {
+            chainId: `0x${CHAIN_IDS[chain].toString(16)}`,
+            chainName: stealth ? `${c.name} · stealth relay` : c.name,
+            nativeCurrency: c.nativeCurrency,
+            rpcUrls: [rpcUrl],
+            blockExplorerUrls: c.blockExplorers ? [c.blockExplorers.default.url] : [],
+          },
+        ],
+      });
+      await readAccount();
+    },
+    [readAccount],
+  );
+
+  return { ...state, connect, disconnect, switchTo, setChainRpc, publicClientFor, walletClient };
 }
